@@ -7,58 +7,64 @@ use std::error::Error;
 use std::process::{exit, Command, Stdio};
 use std::env::args;
 
-fn strip_filename<'a>(filename: &'a str, filetype: &'a str, config: &Value) -> &'a str {
-    let filetype_config: &Value = config
-        .get(filetype)
-        .expect(&format!("{} could not be found in config", filetype));
-
-    let strip_regex: &str = filetype_config
-        .get("strip")
-        .and_then(Value::as_str)
-        .expect(&format!("You must define strip in {}", filetype));
-
-    let re = Regex::new(strip_regex)
-        .expect("failed to parse strip regex");
-
-    re
-        .captures(filename)
-        .and_then(|caps| caps.name("p"))
-        .map(|m| m.as_str())
-        .unwrap_or(filename)
+struct Alternate {
+    filename: String,
+    is_test_regex: Regex,
+    strip_regex: Regex
 }
 
-fn is_test_file(filename: &str, filetype: &str, config: &Value) -> bool {
-    let filetype_config: &Value = config
-        .get(filetype)
-        .expect(&format!("{} could not be found in config", filetype));
+impl Alternate {
+    fn new(filetype: String, filename: String, config: Value) -> Alternate {
+        let filetype_config: &Value = config
+            .get(&filetype)
+            .expect(&format!("{} could not be found in config", filetype));
 
-    let is_test_regex: &str = filetype_config
-        .get("is_test")
-        .and_then(Value::as_str)
-        .expect(&format!("You must define is_test in {}", filetype));
+        let strip_regex: &str = filetype_config
+            .get("strip")
+            .and_then(Value::as_str)
+            .expect(&format!("You must define strip in {}", filetype));
 
-    let is_test_re = Regex::new(is_test_regex)
-        .expect("failed to parse test regex");
+        let is_test_regex: &str = filetype_config
+            .get("is_test")
+            .and_then(Value::as_str)
+            .expect(&format!("You must define is_test in {}", filetype));
 
-    is_test_re.is_match(filename)
-}
+        let is_test_re = Regex::new(is_test_regex)
+            .expect("failed to parse test regex");
 
-fn get_alternate_file<'a>(
-    files: &'a str,
-    filetype: &'a str,
-    stripped_filename: &'a str,
-    config: &Value
-    ) -> Result<&'a str, Box<dyn Error>> {
 
-    let mut result = files
-        .split_whitespace()
-        .filter(|line| {
-            is_test_file(line, filetype, config) ^ is_test_file(stripped_filename, filetype, config)
-        });
+        let strip_re = Regex::new(strip_regex)
+            .expect("failed to parse strip regex");
 
-    Ok(result
-        .next()
-        .unwrap_or_else(|| exit(1)))
+        Alternate {
+            strip_regex: strip_re,
+            is_test_regex: is_test_re,
+            filename: filename,
+        }
+    }
+
+    fn strip_filename(&self) -> &str {
+        self.strip_regex
+            .captures(&self.filename)
+            .and_then(|caps| caps.name("p"))
+            .map(|m| m.as_str())
+            .unwrap_or(&self.filename)
+    }
+
+    fn is_test(&self, filename: &str) -> bool {
+        self.is_test_regex.is_match(filename)
+    }
+
+    fn get_alternate_file<'a>(&'a self, files: &'a str) -> Option<&'a str> {
+        let mut result = files
+            .split_whitespace()
+            .filter(|file| {
+                self.is_test(file) ^ self.is_test(&self.filename)
+            });
+
+        result
+            .next()
+    }
 }
 
 fn run_fzf(input: &str) -> String {
@@ -110,11 +116,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     match (args.get(2), args.get(3)) {
         (None, None) => exit(1),
         (Some(filetype), None) => {
-            let stripped_filename = strip_filename(filename, filetype, &config);
-            let files = run_fzf(stripped_filename);
-            let result = get_alternate_file(&files, filetype, stripped_filename, &config);
+            let alternate = Alternate::new(filetype.to_owned(), filename.to_owned(), config);
+            let files = run_fzf(alternate.strip_filename());
+            let result = alternate.get_alternate_file(&files);
 
-            println!("{}", result.unwrap_or_else(|_| exit(1)));
+            println!("{}", result.unwrap_or_else(|| exit(1)));
         },
         (Some(_filetype), Some(_alternate)) => {}
         _ => unreachable!()
@@ -161,6 +167,36 @@ test/example_web/controllers/newsletter_controller_test.exs";
     }";
 
     #[test]
-    fn test_content_alternate() {
+    fn test_elixir_content_alternate() {
+        let config = serde_json::from_str(CONFIG_STR)
+            .expect("Failed to parse CONFIG_STR");
+
+        let alternate = Alternate::new(
+            "elixir".to_owned(),
+            "lib/example/content.ex".to_owned(),
+            config
+            );
+
+        assert_eq!(
+            alternate.get_alternate_file(TEST_CASE),
+            Some("test/example/content/content_test.exs")
+            );
+    }
+
+    #[test]
+    fn test_elixir_content_test_alternate() {
+        let config = serde_json::from_str(CONFIG_STR)
+            .expect("Failed to parse CONFIG_STR");
+
+        let alternate = Alternate::new(
+            "elixir".to_owned(),
+            "test/example/content/content_test.exs".to_owned(),
+            config
+            );
+
+        assert_eq!(
+            alternate.get_alternate_file(TEST_CASE),
+            Some("lib/example/content.ex")
+            );
     }
 }
