@@ -61,11 +61,11 @@ impl Alternate {
     }
 }
 
-fn run_fzf<I: Into<Stdio>>(input: &str, stdin: Option<I>) -> String {
+fn run_fzf(input: &str, stdin: impl Into<Stdio>) -> String {
     let child = Command::new("fzf")
         .args(&["-f", input, "--no-sort", "--inline-info"])
         .stdout(Stdio::piped())
-        .stdin(stdin.map(Into::into).unwrap_or(Stdio::inherit()))
+        .stdin(stdin)
         .spawn()
         .expect("Failed to run fzf command");
 
@@ -113,7 +113,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         (None, None) => exit(1),
         (Some(filetype), None) => {
             let alternate = Alternate::new(filetype.to_owned(), filename.to_owned(), config);
-            let files = run_fzf::<Stdio>(alternate.strip_filename(), None);
+            let files = run_fzf(alternate.strip_filename(), Stdio::inherit());
             let result = alternate.get_alternate_file(&files);
 
             println!("{}", result.unwrap_or_else(|| exit(1)));
@@ -210,7 +210,7 @@ lib/example_web/templates/page/index.html.eex
         write!(&mut tmp_file, "{}", TEST_CASE).expect("Failed to write to tmp file");
         tmp_file.seek(SeekFrom::Start(0)).unwrap();
 
-        run_fzf(input, Some(tmp_file))
+        run_fzf(input, tmp_file)
     }
 
     #[test]
