@@ -110,3 +110,50 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const TEST_CASE: &str = "lib/example/content.ex
+lib/example/content/question.ex
+lib/example/content/module_question.ex
+lib/example/content/feedback.ex
+lib/example/content/module.ex
+lib/example/content/exam.ex
+lib/example_web/controllers/newsletter_controller.ex
+lib/example_web/controllers/user_controller.ex
+lib/example_web/controllers/feedback_controller.ex
+lib/example_web/controllers/module_controller.ex
+lib/example_web/controllers/question_controller.ex
+lib/example_web/controllers/auth_controller.ex
+lib/example_web/controllers/page_controller.ex
+lib/example_web/controllers/fallback_controller.ex
+lib/example_web/controllers/exam_controller.ex
+test/example/content/content_test.exs
+test/example_web/controllers/module_controller_test.exs
+test/example_web/controllers/feedback_controller_test.exs
+test/example_web/controllers/exam_controller_test.exs
+test/example_web/controllers/question_controller_test.exs
+test/example_web/controllers/page_controller_test.exs
+test/example_web/controllers/user_controller_test.exs
+test/example_web/controllers/auth_controller_test.exs
+test/example_web/controllers/newsletter_controller_test.exs";
+
+    const CONFIG_STR: &str = "{
+        \"elixir\": {
+            \"is_test\": \"_test.exs$\",
+            \"strip\": \"(?P<p>[^_\\/]+)_?(\\\\w+)?.ex$\",
+            \"view\": \"{}_view.ex\"
+        }
+    }";
+
+    #[test]
+    fn test_content_alternate() {
+        let config: serde_json::Value = serde_json::from_str(CONFIG_STR).expect("Failed to parse config");
+        assert_eq!(
+            get_alternate_file("content", "elixir", config).expect("Failed to get alternate file"),
+            "test/example/content/content_test.exs"
+            )
+    }
+}
