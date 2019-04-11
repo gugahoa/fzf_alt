@@ -1,0 +1,7 @@
+{
+	"elixir": {
+		"is_test": "_test.exs$",
+		"strip": "(?P<p>[^_\/]+)_?(\\w+)?.ex$",
+		"view": "{}_view.ex"
+	}
+}
