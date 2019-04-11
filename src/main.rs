@@ -7,10 +7,55 @@ use std::error::Error;
 use std::process::{exit, Command, Stdio};
 use std::env::args;
 
+fn get_alternate_file(
+    filename: &str,
+    filetype: &str,
+    config: Value
+    ) -> Result<String, Box<dyn Error>> {
+    let filetype_config: &Value = config
+        .get(filetype)
+        .ok_or(format!("{} could not be found in config", filetype))?;
+
+    let strip_regex: &str = filetype_config
+        .get("strip")
+        .and_then(Value::as_str)
+        .ok_or(format!("You must define strip in {}", filetype))?;
+
+    let is_test_regex: &str = filetype_config
+        .get("is_test")
+        .and_then(Value::as_str)
+        .ok_or(format!("You must define is_test in {}", filetype))?;
+
+    let re = Regex::new(strip_regex)?;
+    let is_test_re = Regex::new(is_test_regex)?;
+    let is_test = |file| {
+        is_test_re.is_match(file)
+    };
+
+    let current_file_stripped = re
+        .captures(filename)
+        .and_then(|caps| caps.name("p"))
+        .map(|m| m.as_str())
+        .unwrap_or(filename);
+
+    let result = run_fzf(current_file_stripped);
+    let mut result = result
+        .split_whitespace()
+        .filter(|line| {
+            is_test(line) ^ is_test(filename)
+        });
+
+    Ok(result
+        .next()
+        .unwrap_or_else(|| exit(1))
+        .to_string())
+}
+
 fn run_fzf(input: &str) -> String {
     let child = Command::new("fzf")
         .args(&["-f", input, "--no-sort", "--inline-info"])
         .stdout(Stdio::piped())
+        .stdin(Stdio::inherit())
         .spawn()
         .expect("Failed to run fzf command");
 
@@ -55,41 +100,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     match (args.get(2), args.get(3)) {
         (None, None) => exit(1),
         (Some(filetype), None) => {
-            let filetype_config: &Value = config
-                .get(filetype)
-                .ok_or(format!("{} could not be found in config", filetype))?;
-
-            let strip_regex: &str = filetype_config
-                .get("strip")
-                .and_then(Value::as_str)
-                .ok_or(format!("You must define strip in {}", filetype))?;
-
-            let is_test_regex: &str = filetype_config
-                .get("is_test")
-                .and_then(Value::as_str)
-                .ok_or(format!("You must define is_test in {}", filetype))?;
-
-            let re = Regex::new(strip_regex)?;
-            let is_test_re = Regex::new(is_test_regex)?;
-            let is_test = |file| {
-                is_test_re.is_match(file)
-            };
-
-            let current_file_stripped = re
-                .captures(filename)
-                .and_then(|caps| caps.name("p"))
-                .map(|m| m.as_str())
-                .unwrap_or(filename);
-
-            let result = run_fzf(current_file_stripped);
-            let mut result = result
-                .split_whitespace()
-                .filter(|line| {
-                    is_test(line) ^ is_test(filename)
-                });
-            let result = result
-                .next()
-                .unwrap_or_else(|| exit(1));
+            let result = get_alternate_file(filename, filetype, config)?;
 
             println!("{}", result);
         },
@@ -99,4 +110,3 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     Ok(())
 }
-
