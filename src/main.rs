@@ -7,48 +7,58 @@ use std::error::Error;
 use std::process::{exit, Command, Stdio};
 use std::env::args;
 
-fn get_alternate_file(
-    filename: &str,
-    filetype: &str,
-    config: Value
-    ) -> Result<String, Box<dyn Error>> {
+fn strip_filename<'a>(filename: &'a str, filetype: &'a str, config: &Value) -> &'a str {
     let filetype_config: &Value = config
         .get(filetype)
-        .ok_or(format!("{} could not be found in config", filetype))?;
+        .expect(&format!("{} could not be found in config", filetype));
 
     let strip_regex: &str = filetype_config
         .get("strip")
         .and_then(Value::as_str)
-        .ok_or(format!("You must define strip in {}", filetype))?;
+        .expect(&format!("You must define strip in {}", filetype));
+
+    let re = Regex::new(strip_regex)
+        .expect("failed to parse strip regex");
+
+    re
+        .captures(filename)
+        .and_then(|caps| caps.name("p"))
+        .map(|m| m.as_str())
+        .unwrap_or(filename)
+}
+
+fn is_test_file(filename: &str, filetype: &str, config: &Value) -> bool {
+    let filetype_config: &Value = config
+        .get(filetype)
+        .expect(&format!("{} could not be found in config", filetype));
 
     let is_test_regex: &str = filetype_config
         .get("is_test")
         .and_then(Value::as_str)
-        .ok_or(format!("You must define is_test in {}", filetype))?;
+        .expect(&format!("You must define is_test in {}", filetype));
 
-    let re = Regex::new(strip_regex)?;
-    let is_test_re = Regex::new(is_test_regex)?;
-    let is_test = |file| {
-        is_test_re.is_match(file)
-    };
+    let is_test_re = Regex::new(is_test_regex)
+        .expect("failed to parse test regex");
 
-    let current_file_stripped = re
-        .captures(filename)
-        .and_then(|caps| caps.name("p"))
-        .map(|m| m.as_str())
-        .unwrap_or(filename);
+    is_test_re.is_match(filename)
+}
 
-    let result = run_fzf(current_file_stripped);
-    let mut result = result
+fn get_alternate_file<'a>(
+    files: &'a str,
+    filetype: &'a str,
+    stripped_filename: &'a str,
+    config: &Value
+    ) -> Result<&'a str, Box<dyn Error>> {
+
+    let mut result = files
         .split_whitespace()
         .filter(|line| {
-            is_test(line) ^ is_test(filename)
+            is_test_file(line, filetype, config) ^ is_test_file(stripped_filename, filetype, config)
         });
 
     Ok(result
         .next()
-        .unwrap_or_else(|| exit(1))
-        .to_string())
+        .unwrap_or_else(|| exit(1)))
 }
 
 fn run_fzf(input: &str) -> String {
@@ -86,7 +96,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let config = load_config(&config_path)?;
     let args: Vec<String> = args().collect();
 
-    if args.len() == 1 {
+    if args.len() < 2 {
         exit(1);
     }
 
@@ -100,9 +110,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     match (args.get(2), args.get(3)) {
         (None, None) => exit(1),
         (Some(filetype), None) => {
-            let result = get_alternate_file(filename, filetype, config)?;
+            let stripped_filename = strip_filename(filename, filetype, &config);
+            let files = run_fzf(stripped_filename);
+            let result = get_alternate_file(&files, filetype, stripped_filename, &config);
 
-            println!("{}", result);
+            println!("{}", result.unwrap_or_else(|_| exit(1)));
         },
         (Some(_filetype), Some(_alternate)) => {}
         _ => unreachable!()
@@ -150,10 +162,5 @@ test/example_web/controllers/newsletter_controller_test.exs";
 
     #[test]
     fn test_content_alternate() {
-        let config: serde_json::Value = serde_json::from_str(CONFIG_STR).expect("Failed to parse config");
-        assert_eq!(
-            get_alternate_file("content", "elixir", config).expect("Failed to get alternate file"),
-            "test/example/content/content_test.exs"
-            )
     }
 }
