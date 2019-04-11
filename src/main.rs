@@ -67,11 +67,14 @@ impl Alternate {
     }
 }
 
-fn run_fzf(input: &str) -> String {
+fn run_fzf<I: Into<Stdio>>(
+    input: &str,
+    stdin: Option<I>,
+    ) -> String {
     let child = Command::new("fzf")
         .args(&["-f", input, "--no-sort", "--inline-info"])
         .stdout(Stdio::piped())
-        .stdin(Stdio::inherit())
+        .stdin(stdin.map(Into::into).unwrap_or(Stdio::inherit()))
         .spawn()
         .expect("Failed to run fzf command");
 
@@ -117,7 +120,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         (None, None) => exit(1),
         (Some(filetype), None) => {
             let alternate = Alternate::new(filetype.to_owned(), filename.to_owned(), config);
-            let files = run_fzf(alternate.strip_filename());
+            let files = run_fzf::<Stdio>(alternate.strip_filename(), None);
             let result = alternate.get_alternate_file(&files);
 
             println!("{}", result.unwrap_or_else(|| exit(1)));
@@ -133,12 +136,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 mod test {
     use super::*;
 
-    const TEST_CASE: &str = "lib/example/content.ex
+    use tempfile::tempfile;
+    use std::io::prelude::*;
+    use std::io::SeekFrom;
+
+    const TEST_CASE: &str = "lib/example.ex
+lib/example_web.ex
+test/test_helper.exs
+lib/example/repo.ex
+lib/example/account.ex
+lib/example/content.ex
+lib/example/marketing.ex
+lib/example/application.ex
+lib/guardian/pipeline.ex
+lib/guardian/error_handler.ex
+lib/guardian/guardian.ex
+lib/example_web/gettext.ex
+lib/example_web/router.ex
+lib/example_web/endpoint.ex
+test/support/test_helpers.ex
+test/support/conn_case.ex
+test/support/data_case.ex
+test/support/channel_case.ex
 lib/example/content/question.ex
 lib/example/content/module_question.ex
 lib/example/content/feedback.ex
 lib/example/content/module.ex
 lib/example/content/exam.ex
+lib/example/marketing/newsletter.ex
+lib/example/account/user.ex
 lib/example_web/controllers/newsletter_controller.ex
 lib/example_web/controllers/user_controller.ex
 lib/example_web/controllers/feedback_controller.ex
@@ -148,7 +174,25 @@ lib/example_web/controllers/auth_controller.ex
 lib/example_web/controllers/page_controller.ex
 lib/example_web/controllers/fallback_controller.ex
 lib/example_web/controllers/exam_controller.ex
+lib/example_web/channels/user_socket.ex
+lib/example_web/views/error_view.ex
+lib/example_web/views/layout_view.ex
+lib/example_web/views/error_helpers.ex
+lib/example_web/views/page_view.ex
+lib/example_web/views/question_view.ex
+lib/example_web/views/exam_view.ex
+lib/example_web/views/auth_view.ex
+lib/example_web/views/feedback_view.ex
+lib/example_web/views/user_view.ex
+lib/example_web/views/newsletter_view.ex
+lib/example_web/views/changeset_view.ex
+lib/example_web/views/module_view.ex
+test/example/marketing/marketing_test.exs
+test/example/account/account_test.exs
 test/example/content/content_test.exs
+test/example_web/views/error_view_test.exs
+test/example_web/views/layout_view_test.exs
+test/example_web/views/page_view_test.exs
 test/example_web/controllers/module_controller_test.exs
 test/example_web/controllers/feedback_controller_test.exs
 test/example_web/controllers/exam_controller_test.exs
@@ -156,15 +200,27 @@ test/example_web/controllers/question_controller_test.exs
 test/example_web/controllers/page_controller_test.exs
 test/example_web/controllers/user_controller_test.exs
 test/example_web/controllers/auth_controller_test.exs
-test/example_web/controllers/newsletter_controller_test.exs";
+lib/example_web/templates/layout/app.html.eex
+test/example_web/controllers/newsletter_controller_test.exs
+lib/example_web/templates/page/index.html.eex
+";
 
     const CONFIG_STR: &str = "{
         \"elixir\": {
             \"is_test\": \"_test.exs$\",
-            \"strip\": \"(?P<p>[^_\\/]+)_?(\\\\w+)?.ex$\",
-            \"view\": \"{}_view.ex\"
+            \"strip\": \"(?P<p>[^_\\/]+)_?(\\\\w+)?.exs?$\"
         }
     }";
+
+    fn test_case_fixture(input: &str) -> String {
+        let mut tmp_file = tempfile()
+            .expect("Failed to create tmp file for test");
+        write!(&mut tmp_file, "{}", TEST_CASE)
+            .expect("Failed to write to tmp file");
+        tmp_file.seek(SeekFrom::Start(0)).unwrap();
+
+        run_fzf(input, Some(tmp_file))
+    }
 
     #[test]
     fn test_elixir_content_alternate() {
@@ -177,8 +233,10 @@ test/example_web/controllers/newsletter_controller_test.exs";
             config
             );
 
+        let test_case = test_case_fixture(alternate.strip_filename());
+
         assert_eq!(
-            alternate.get_alternate_file(TEST_CASE),
+            alternate.get_alternate_file(&test_case),
             Some("test/example/content/content_test.exs")
             );
     }
@@ -194,8 +252,10 @@ test/example_web/controllers/newsletter_controller_test.exs";
             config
             );
 
+        let test_case = test_case_fixture(alternate.strip_filename());
+
         assert_eq!(
-            alternate.get_alternate_file(TEST_CASE),
+            alternate.get_alternate_file(&test_case),
             Some("lib/example/content.ex")
             );
     }
