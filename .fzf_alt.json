@@ -3,5 +3,9 @@
 		"is_test": "_test.exs$",
 		"strip": "(?P<p>[^_\/]+)_?(\\w+)?.ex$",
 		"view": "{}_view.ex"
+	},
+	"python": {
+		"is_test": "(tests|test)_(\\w+).py",
+		"strip": "src/(?P<p>\\w+).py$"
 	}
 }
