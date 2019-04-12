@@ -73,6 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = args().collect();
 
     if args.len() < 2 {
+        eprintln!("too few args provided");
         exit(1);
     }
 
@@ -80,11 +81,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let filename = if let Some(filename) = args.get(1) {
         filename
     } else {
-        unreachable!()
+        eprintln!("filename should be provided");
+        exit(1);
     };
 
     match (args.get(2), args.get(3)) {
-        (None, None) => exit(1),
+        (None, None) => {
+            eprintln!("filetype should be provided");
+            exit(1);
+        },
         (Some(filetype), None) => {
             let alternate = Alternate::new(filetype.to_owned(), filename.to_owned());
             let files = run_fzf(alternate.strip_filename(), Stdio::inherit());
