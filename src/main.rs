@@ -1,5 +1,5 @@
-use fzf_alt::config::AppConfig;
 use confy;
+use fzf_alt::config::AppConfig;
 use regex::Regex;
 use std::env::args;
 use std::error::Error;
@@ -89,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         (None, None) => {
             eprintln!("filetype should be provided");
             exit(1);
-        },
+        }
         (Some(filetype), None) => {
             let alternate = Alternate::new(filetype.to_owned(), filename.to_owned());
             let files = run_fzf(alternate.strip_filename(), Stdio::inherit());

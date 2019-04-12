@@ -1,7 +1,7 @@
 pub mod config {
     use regex::Regex;
-    use serde::{Serialize, Deserialize};
-    use serde::de::{Deserializer, Visitor, MapAccess};
+    use serde::de::{Deserializer, MapAccess, Visitor};
+    use serde::{Deserialize, Serialize};
     use std::collections::HashMap;
     use std::fmt;
     use std::marker::PhantomData;
@@ -39,7 +39,6 @@ pub mod config {
         }
     }
 
-
     // A Visitor is a type that holds methods that a Deserializer can drive
     // depending on what is contained in the input data.
     //
@@ -47,13 +46,13 @@ pub mod config {
     // keeps the compiler from complaining about unused generic type
     // parameters.
     struct AppConfigVisitor {
-        marker: PhantomData<fn() -> AppConfig>
+        marker: PhantomData<fn() -> AppConfig>,
     }
 
     impl AppConfigVisitor {
         fn new() -> Self {
             Self {
-                marker: PhantomData
+                marker: PhantomData,
             }
         }
     }
@@ -64,8 +63,7 @@ pub mod config {
     // implemented here, for example deserializing from integers or strings.
     // By default those methods will return an error, which makes sense
     // because we cannot deserialize a MyMap from an integer or string.
-    impl<'de> Visitor<'de> for AppConfigVisitor
-    {
+    impl<'de> Visitor<'de> for AppConfigVisitor {
         // The type that our Visitor is going to produce.
         type Value = AppConfig;
 
@@ -95,8 +93,8 @@ pub mod config {
 
     impl<'de> Deserialize<'de> for AppConfig {
         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where 
-            D: Deserializer<'de>
+        where
+            D: Deserializer<'de>,
         {
             deserializer.deserialize_map(AppConfigVisitor::new())
         }
