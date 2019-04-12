@@ -1,10 +1,8 @@
+use fzf_alt::config::AppConfig;
+use confy;
 use regex::Regex;
-use serde_json::Value;
 use std::env::args;
 use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
 use std::process::{exit, Command, Stdio};
 
 struct Alternate {
@@ -14,28 +12,24 @@ struct Alternate {
 }
 
 impl Alternate {
-    fn new(filetype: String, filename: String, config: Value) -> Alternate {
-        let filetype_config: &Value = config
+    fn new(filetype: String, filename: String) -> Alternate {
+        let cfg: AppConfig = confy::load("fzf_alt").expect("Failed to load fzf_alt config");
+
+        let strip_regex = cfg
+            .0
             .get(&filetype)
-            .expect(&format!("{} could not be found in config", filetype));
+            .map(|ft_cfg| ft_cfg.strip.clone())
+            .unwrap();
 
-        let strip_regex: &str = filetype_config
-            .get("strip")
-            .and_then(Value::as_str)
-            .expect(&format!("You must define strip in {}", filetype));
-
-        let is_test_regex: &str = filetype_config
-            .get("is_test")
-            .and_then(Value::as_str)
-            .expect(&format!("You must define is_test in {}", filetype));
-
-        let is_test_re = Regex::new(is_test_regex).expect("failed to parse test regex");
-
-        let strip_re = Regex::new(strip_regex).expect("failed to parse strip regex");
+        let is_test_regex = cfg
+            .0
+            .get(&filetype)
+            .map(|ft_cfg| ft_cfg.is_test.clone())
+            .unwrap();
 
         Alternate {
-            strip_regex: strip_re,
-            is_test_regex: is_test_re,
+            strip_regex: strip_regex,
+            is_test_regex: is_test_regex,
             filename: filename,
         }
     }
@@ -75,27 +69,7 @@ fn run_fzf(input: &str, stdin: impl Into<Stdio>) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
-fn load_config(config_path: &Path) -> Result<Value, Box<dyn Error>> {
-    let config_file = File::open(config_path)?;
-    let config_reader = BufReader::new(config_file);
-    let v: Value = serde_json::from_reader(config_reader)?;
-    Ok(v)
-}
-
 fn main() -> Result<(), Box<dyn Error>> {
-    let current_config_path = Path::new(".fzf_alt.json");
-    let alternate_config_path = Path::new("~/.fzf_alt.json");
-
-    let config_path = if current_config_path.exists() {
-        current_config_path
-    } else if alternate_config_path.exists() {
-        alternate_config_path
-    } else {
-        eprintln!(".fzf_alt.json not found in current dir or home dir");
-        exit(1)
-    };
-
-    let config = load_config(&config_path)?;
     let args: Vec<String> = args().collect();
 
     if args.len() < 2 {
@@ -112,7 +86,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     match (args.get(2), args.get(3)) {
         (None, None) => exit(1),
         (Some(filetype), None) => {
-            let alternate = Alternate::new(filetype.to_owned(), filename.to_owned(), config);
+            let alternate = Alternate::new(filetype.to_owned(), filename.to_owned());
             let files = run_fzf(alternate.strip_filename(), Stdio::inherit());
             let result = alternate.get_alternate_file(&files);
 
@@ -198,13 +172,6 @@ test/example_web/controllers/newsletter_controller_test.exs
 lib/example_web/templates/page/index.html.eex
 ";
 
-    const CONFIG_STR: &str = "{
-        \"elixir\": {
-            \"is_test\": \"_test.exs$\",
-            \"strip\": \"(?P<p>[^_\\/]+)_?(\\\\w+)?.exs?$\"
-        }
-    }";
-
     fn test_case_fixture(input: &str) -> String {
         let mut tmp_file = tempfile().expect("Failed to create tmp file for test");
         write!(&mut tmp_file, "{}", TEST_CASE).expect("Failed to write to tmp file");
@@ -215,13 +182,7 @@ lib/example_web/templates/page/index.html.eex
 
     #[test]
     fn test_elixir_content_alternate() {
-        let config = serde_json::from_str(CONFIG_STR).expect("Failed to parse CONFIG_STR");
-
-        let alternate = Alternate::new(
-            "elixir".to_owned(),
-            "lib/example/content.ex".to_owned(),
-            config,
-        );
+        let alternate = Alternate::new("elixir".to_owned(), "lib/example/content.ex".to_owned());
 
         let test_case = test_case_fixture(alternate.strip_filename());
 
@@ -233,12 +194,9 @@ lib/example_web/templates/page/index.html.eex
 
     #[test]
     fn test_elixir_content_test_alternate() {
-        let config = serde_json::from_str(CONFIG_STR).expect("Failed to parse CONFIG_STR");
-
         let alternate = Alternate::new(
             "elixir".to_owned(),
             "test/example/content/content_test.exs".to_owned(),
-            config,
         );
 
         let test_case = test_case_fixture(alternate.strip_filename());
