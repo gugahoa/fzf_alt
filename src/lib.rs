@@ -7,7 +7,7 @@ pub mod config {
     use std::marker::PhantomData;
 
     #[derive(Serialize)]
-    pub struct AppConfig(pub HashMap<String, FiletypeConfig>);
+    pub struct AppConfig(HashMap<String, FiletypeConfig>);
 
     #[derive(Serialize, Deserialize)]
     pub struct FiletypeConfig {
@@ -15,6 +15,13 @@ pub mod config {
         pub is_test: Regex,
         #[serde(with = "serde_regex")]
         pub strip: Regex,
+    }
+
+    impl AppConfig {
+        pub fn get_filetype_config(&self, filetype: &str) -> Option<&FiletypeConfig> {
+            self.0
+                .get(filetype)
+        }
     }
 
     impl Default for AppConfig {

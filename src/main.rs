@@ -12,26 +12,16 @@ struct Alternate {
 }
 
 impl Alternate {
-    fn new(filetype: String, filename: String) -> Alternate {
+    fn new(filetype: String, filename: String) -> Option<Alternate> {
         let cfg: AppConfig = confy::load("fzf_alt").expect("Failed to load fzf_alt config");
 
-        let strip_regex = cfg
-            .0
-            .get(&filetype)
-            .map(|ft_cfg| ft_cfg.strip.clone())
-            .unwrap();
+        let filetype_cfg = cfg.get_filetype_config(&filetype)?;
 
-        let is_test_regex = cfg
-            .0
-            .get(&filetype)
-            .map(|ft_cfg| ft_cfg.is_test.clone())
-            .unwrap();
-
-        Alternate {
-            strip_regex: strip_regex,
-            is_test_regex: is_test_regex,
+        Some(Alternate {
+            strip_regex: filetype_cfg.strip.to_owned(),
+            is_test_regex: filetype_cfg.is_test.to_owned(),
             filename: filename,
-        }
+        })
     }
 
     fn strip_filename(&self) -> &str {
@@ -92,6 +82,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         (Some(filetype), None) => {
             let alternate = Alternate::new(filetype.to_owned(), filename.to_owned());
+            let alternate = if let Some(alt) = alternate {
+                alt
+            } else {
+                eprintln!("{} not found in fzf_alt config", filetype);
+                exit(1)
+            };
+
             let files = run_fzf(alternate.strip_filename(), Stdio::inherit());
             let result = alternate.get_alternate_file(&files);
 
@@ -187,7 +184,8 @@ lib/example_web/templates/page/index.html.eex
 
     #[test]
     fn test_elixir_content_alternate() {
-        let alternate = Alternate::new("elixir".to_owned(), "lib/example/content.ex".to_owned());
+        let alternate = Alternate::new("elixir".to_owned(), "lib/example/content.ex".to_owned())
+            .expect("elixir not found in fzf_alt config");
 
         let test_case = test_case_fixture(alternate.strip_filename());
 
@@ -202,7 +200,8 @@ lib/example_web/templates/page/index.html.eex
         let alternate = Alternate::new(
             "elixir".to_owned(),
             "test/example/content/content_test.exs".to_owned(),
-        );
+        )
+        .expect("elixir not found in fzf_alt config");
 
         let test_case = test_case_fixture(alternate.strip_filename());
 
